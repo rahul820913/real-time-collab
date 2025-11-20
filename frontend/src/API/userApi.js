@@ -1,7 +1,9 @@
 import axios from "axios";
 
 const apicall = axios.create({
-  baseURL: "http://localhost:5000/api",
+    baseURL: window.location.hostname === "localhost" 
+    ? "http://localhost:5000/api" 
+    : "https://real-time-collab-rqce.onrender.com/api",
 });
 
 const getAuth = () => {

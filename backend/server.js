@@ -247,7 +247,7 @@ const FileNode = require("./src/models/FileNode");
 const { buildTree } = require("./src/utils/buildTree");
 
 const PORT = process.env.PORT || 5000;
-const CLIENT_ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
+const CLIENT_ORIGIN = process.env.CLIENT_URL || "https://realtimecollbapp.vercel.app";
 
 connectDB();
 
@@ -490,10 +490,5 @@ setInterval(async () => {
 app.get("/", (_, res) =>
   res.send("🟢 Backend Running — Collaborative Code Editor Active")
 );
-
-server.listen(PORT, () => {
-  console.log(`🚀 Server Running: http://localhost:${PORT}`);
-  console.log(`🔗 Socket.IO Path: /socket.io`);
-});
 
 module.exports = app;

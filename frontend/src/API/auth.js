@@ -2,7 +2,9 @@ import axios from 'axios';
 
 // Create an instance of axios to avoid repeating the base URL
 const apiClient = axios.create({
-    baseURL: 'http://localhost:5000/api/auth', // Your backend URL
+    baseURL: window.location.hostname === "localhost" 
+    ? "http://localhost:5000/api" 
+    : "https://real-time-collab-rqce.onrender.com/api/auth", // Your backend URL
 });
 
 export const loginUser = async (credentials) => {

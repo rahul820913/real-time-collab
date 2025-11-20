@@ -153,7 +153,9 @@
 import React, { createContext, useContext, useRef } from "react";
 import { io } from "socket.io-client";
 
-const SERVER_URL = "http://localhost:5000";
+const SERVER_URL = window.location.hostname === "localhost" 
+  ? "http://localhost:5000" 
+  : "https://real-time-collab-rqce.onrender.com";
 
 const SocketContext = createContext(null);
 
@@ -164,7 +166,7 @@ export const SocketProvider = ({ children }) => {
   if (!socketRef.current) {
     socketRef.current = io(SERVER_URL, {
       path: "/socket.io",
-      transports: ["websocket"],
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 800,
