@@ -235,6 +235,8 @@
 
 // module.exports = app;
 // server.js
+
+
 require("dotenv").config();
 const express = require("express");
 const http = require("http");
@@ -246,15 +248,23 @@ const fileNodeRoutes = require("./src/routes/fileNodeRoutes");
 const FileNode = require("./src/models/FileNode");
 const { buildTree } = require("./src/utils/buildTree");
 
+// ✅ CHANGE 1: Use '0.0.0.0' binding logic for Render
 const PORT = process.env.PORT || 5000;
-const CLIENT_ORIGIN = "https://realtimecollbapp.vercel.app";
+
+// ✅ CHANGE 2: Use an ARRAY to allow both Vercel (Prod) and Localhost (Dev)
+const allowedOrigins = [
+  "https://realtimecollbapp.vercel.app", // Your Production Frontend
+  "http://localhost:5173",               // Your Local Frontend
+  "http://localhost:5000"                // Your Local Backend/Socket
+];
 
 connectDB();
 
 const app = express();
 const server = http.createServer(app);
 
-app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
+// ✅ CHANGE 3: Use the allowedOrigins array
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 
 // API Routes
@@ -285,159 +295,110 @@ async function flushProjectToDB(projectId) {
   }
 }
 
+// ✅ CHANGE 4: Pass the allowedOrigins array to Socket.io too
 const io = new Server(server, {
-  cors: { origin: CLIENT_ORIGIN, credentials: true },
+  cors: { origin: allowedOrigins, credentials: true },
   path: "/socket.io",
 });
 
 io.on("connection", (socket) => {
   console.log(`⚡ Connected: ${socket.id}`);
 
-  // ============================================================
-  // JOIN PROJECT — FIXED (uses name instead of "user")
-  // ============================================================
   socket.on("joinProject", async ({ projectId, name }) => {
     try {
       if (!projectId) return;
-
       const userName = name || "Anonymous";
-
-
       socket.join(projectId);
       socket.data.projectId = projectId;
       socket.data.name = userName;
 
-      // Presence
       if (!userPresence[projectId]) userPresence[projectId] = [];
       userPresence[projectId].push({ id: socket.id, name: userName });
 
       io.to(projectId).emit("presence", userPresence[projectId]);
 
-      // Settings
       socket.emit(
         "settingsUpdate",
         projectSettings[projectId] || { theme: "dark", fontSize: 14 }
       );
 
-      // First user loads DB
       if (!liveFileBuffers[projectId]) {
         liveFileBuffers[projectId] = {};
         console.log(`📂 Loading project ${projectId} from DB...`);
-
         const nodes = await FileNode.find({ projectId }).lean();
         const tree = buildTree(nodes);
-
         nodes.forEach((node) => {
           if (node.type === "file") {
             liveFileBuffers[projectId][String(node._id)] = node.content || "";
           }
         });
-
         socket.emit("fileTreeUpdate", tree);
       }
-
       socket.emit("initialFileContents", liveFileBuffers[projectId]);
-
-      // Terminal logs
       (runLogs[projectId] || []).slice(-20).forEach((line) => {
         socket.emit("runOutput", line);
       });
-
       console.log(`👤 ${userName} joined ${projectId}`);
     } catch (err) {
       console.error("❌ joinProject error:", err);
     }
   });
 
-  // ============================================================
-  // REAL-TIME EDITOR DELTA
-  // ============================================================
   socket.on("editorChangeDelta", ({ projectId, nodeId, patches }) => {
     if (!projectId || !nodeId || !Array.isArray(patches)) return;
-
     if (!liveFileBuffers[projectId]) liveFileBuffers[projectId] = {};
     if (!liveFileBuffers[projectId][nodeId]) liveFileBuffers[projectId][nodeId] = "";
-
     let content = liveFileBuffers[projectId][nodeId];
-
     patches
       .sort((a, b) => b.from - a.from)
       .forEach((p) => {
-        content =
-          content.slice(0, p.from) + p.insert + content.slice(p.to);
+        content = content.slice(0, p.from) + p.insert + content.slice(p.to);
       });
-
     liveFileBuffers[projectId][nodeId] = content;
-
     socket.to(projectId).emit("editorChangeDelta", { nodeId, patches });
   });
 
-  // ============================================================
-  // FILE TREE
-  // ============================================================
   socket.on("updateFileTree", ({ projectId, structure }) => {
     if (!projectId) return;
     io.to(projectId).emit("fileTreeUpdate", structure);
   });
 
-  // ============================================================
-  // SETTINGS
-  // ============================================================
   socket.on("updateSettings", ({ projectId, settings }) => {
     if (!projectId) return;
     projectSettings[projectId] = settings;
     io.to(projectId).emit("settingsUpdate", settings);
   });
 
-  // ============================================================
-  // CHAT — FIXED to use correct fallback
-  // ============================================================
   socket.on("chatMessage", ({ projectId, message, user }) => {
     if (!projectId || !message) return;
-
     const msg = {
       user: user || socket.data.name,
       message,
       timestamp: new Date().toISOString(),
     };
-
     messages.create({
       projectId,
       user: msg.user,
       message,
       timestamp: msg.timestamp,
     }).catch(console.error);
-
     io.to(projectId).emit("chatMessage", msg);
   });
 
-  // ============================================================
-  // LEAVE PROJECT — FIXED
-  // ============================================================
   socket.on("leaveProject", async ({ projectId, name }) => {
     try {
       if (!projectId) return;
-
       console.log(`🚪 ${name || socket.data.name} leaving ${projectId}`);
-
-      // Remove from presence list
       if (userPresence[projectId]) {
         userPresence[projectId] = userPresence[projectId].filter(
           (u) => u.id !== socket.id
         );
       }
-
       io.to(projectId).emit("presence", userPresence[projectId] || []);
-
       socket.leave(projectId);
-
-      // Reset socket
       delete socket.data.projectId;
-
-      // Last user → save & cleanup
       if (!userPresence[projectId] || userPresence[projectId].length === 0) {
         await flushProjectToDB(projectId);
-
         delete liveFileBuffers[projectId];
         delete userPresence[projectId];
         delete projectSettings[projectId];
@@ -448,30 +409,19 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ============================================================
-  // DISCONNECT (only if they DID NOT leave manually)
-  // ============================================================
   socket.on("disconnect", async (reason) => {
     const projectId = socket.data.projectId;
     const name = socket.data.name;
-
     console.log(`❌ Disconnected: ${socket.id} (${name}) reason: ${reason}`);
-
     if (!projectId) return;
-
-    // Remove from presence
     if (userPresence[projectId]) {
       userPresence[projectId] = userPresence[projectId].filter(
         (u) => u.id !== socket.id
       );
-
       io.to(projectId).emit("presence", userPresence[projectId]);
     }
-
-    // Last user cleanup
     if (userPresence[projectId] && userPresence[projectId].length === 0) {
       await flushProjectToDB(projectId);
-
       delete liveFileBuffers[projectId];
       delete userPresence[projectId];
       delete projectSettings[projectId];
@@ -480,7 +430,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// Autosave every 30s
 setInterval(async () => {
   for (const id of Object.keys(liveFileBuffers)) {
     await flushProjectToDB(id);
@@ -491,4 +440,8 @@ app.get("/", (_, res) =>
   res.send("🟢 Backend Running — Collaborative Code Editor Active")
 );
 
-module.exports = app;
+// ✅ CHANGE 5: CRITICAL! Start the server listening
+// This was missing, which caused the "No open ports" error on Render
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
