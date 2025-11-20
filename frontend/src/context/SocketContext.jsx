@@ -165,7 +165,7 @@ export const SocketProvider = ({ children }) => {
   // Create socket once
   if (!socketRef.current) {
     socketRef.current = io(SERVER_URL, {
-      path: "/socket.io",
+      // path: "/socket.io",
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 10,

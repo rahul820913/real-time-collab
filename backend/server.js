@@ -247,7 +247,7 @@ const FileNode = require("./src/models/FileNode");
 const { buildTree } = require("./src/utils/buildTree");
 
 const PORT = process.env.PORT || 5000;
-const CLIENT_ORIGIN = process.env.CLIENT_URL || "https://realtimecollbapp.vercel.app";
+const CLIENT_ORIGIN = "https://realtimecollbapp.vercel.app";
 
 connectDB();
 
