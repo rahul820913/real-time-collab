@@ -107,7 +107,7 @@ router.get("/:id", async (req, res) => {
       
       await Message.deleteMany({ projectId : id });
 
-      const deleted = await Project.findByIdAndDelete({projectId : id});
+      const deleted = await Project.findByIdAndDelete(id);
       if (!deleted) {
         return res.status(404).json({ message: "Project not found" });
       }

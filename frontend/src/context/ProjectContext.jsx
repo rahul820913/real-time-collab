@@ -21,6 +21,7 @@ export const ProjectProvider = ({ children }) => {
     try {
       setLoading(true);
       const newProject = await createProject(projectData);
+      console.log("New project created:", newProject);
       setProjects((prev) => [...prev, newProject]);
       navigate(`/project/${newProject._id}`); // Redirect after creation
     } catch (err) {
